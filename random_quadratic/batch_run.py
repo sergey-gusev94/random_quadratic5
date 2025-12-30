@@ -314,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch",
         type=str,
-        default="none",
+        default="nonconvex100",
         help="Batch name (e.g., 'psd' for psd.txt, 'nonconvex100' \
             for nonconvex100.txt, 'none' to generate new batch). Default: nonconvex100",
     )
@@ -336,7 +336,7 @@ if __name__ == "__main__":
         # {"solver": "gurobi", "subsolver": 'persistent'},
         # {"solver": "gams", "subsolver": "ipopth"},
         {"solver": "gams", "subsolver": "scip"},
-        {"solver": "gams", "subsolver": "scip_convex"},
+        # {"solver": "gams", "subsolver": "scip_convex"},
         # {"solver": "scip", "subsolver": None},
     ]
 
@@ -376,18 +376,18 @@ if __name__ == "__main__":
             reformulation_strategies=[
                 "gdp.bigm",
                 # "gdp.hull",
-                # "gdp.hull_exact",
+                "gdp.hull_exact",
                 # "gdp.hull_reduced_y",
-                # "gdp.binary_multiplication",
-                # "gdp.hull_eps_1e-2",
-                # "gdp.hull_eps_1e-3",
-                # "gdp.hull_eps_1e-4",
+                "gdp.binary_multiplication",
+                "gdp.hull_eps_1e-2",
+                "gdp.hull_eps_1e-3",
+                "gdp.hull_eps_1e-4",
                 # "gdp.hull_exact_conic",
-                "gdp.hull_exact_conic_original",
-                "gdp.hull_exact_conic_no_sqrt_extra_var",
-                "gdp.hull_exact_conic_no_sqrt_no_extra_var",
-                "gdp.hull_exact_conic_sqrt_extra_var",
-                "gdp.hull_exact_conic_sqrt_no_extra_var",
+                # "gdp.hull_exact_conic_original",
+                # "gdp.hull_exact_conic_no_sqrt_extra_var",
+                # "gdp.hull_exact_conic_no_sqrt_no_extra_var",
+                # "gdp.hull_exact_conic_sqrt_extra_var",
+                # "gdp.hull_exact_conic_sqrt_no_extra_var",
             ],
             mode=mode,
             time_limit=300,
