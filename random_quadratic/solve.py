@@ -461,6 +461,125 @@ def parse_root_relaxation(
         return None
 
 
+def parse_solver_bounds(
+    output_log_path: str, solver: str = "gurobi", subsolver: Optional[str] = None
+) -> Tuple[Optional[float], Optional[float]]:
+    """
+    Parse the output log file to extract the lower and upper bounds.
+
+    Parameters
+    ----------
+    output_log_path : str
+        Path to the output log file
+    solver : str, optional
+        The solver used, by default "gurobi"
+    subsolver : Optional[str], optional
+        The subsolver used, by default None
+
+    Returns
+    -------
+    Tuple[Optional[float], Optional[float]]
+        A tuple of (lower_bound, upper_bound)
+    """
+    if not os.path.exists(output_log_path):
+        print(f"Warning: Output log file not found at {output_log_path}")
+        return None, None
+
+    try:
+        with open(output_log_path, "r") as f:
+            log_content = f.read()
+
+        lower_bound = None
+        upper_bound = None
+
+        # Handle GAMS with Gurobi subsolver
+        if solver.lower() == "gams" and subsolver and subsolver.lower() == "gurobi":
+            # Pattern: "Best objective X.XXXe+XX, best bound Y.YYYe+YY, gap Z.ZZ%"
+            gap_line_match = re.search(
+                r"[Bb]est objective\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*"
+                r"best bound\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+                log_content,
+            )
+            if gap_line_match:
+                upper_bound = float(gap_line_match.group(1))
+                lower_bound = float(gap_line_match.group(2))
+                print(f"Parsed bounds from Gurobi output: lower={lower_bound}, upper={upper_bound}")
+                return lower_bound, upper_bound
+
+            # Alternative pattern: Look for the last line of the nodes table
+            # which shows the final bounds
+            # Pattern in Gurobi: "Explored X nodes ... best objective Y, best bound Z"
+            explored_match = re.search(
+                r"Explored \d+ nodes.*best objective\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*"
+                r"best bound\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+                log_content,
+                re.IGNORECASE,
+            )
+            if explored_match:
+                upper_bound = float(explored_match.group(1))
+                lower_bound = float(explored_match.group(2))
+                print(
+                    f"Parsed bounds from Gurobi explored line:\
+                         lower={lower_bound}, upper={upper_bound}"
+                )
+                return lower_bound, upper_bound
+
+        # Handle GAMS with BARON subsolver
+        elif solver.lower() == "gams" and subsolver and subsolver.lower() == "baron":
+            # Look for "Best possible" and "Best solution" values
+            best_possible_match = re.search(
+                r"Best possible\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", log_content
+            )
+            best_solution_match = re.search(
+                r"Best solution\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", log_content
+            )
+            if best_possible_match:
+                lower_bound = float(best_possible_match.group(1))
+            if best_solution_match:
+                upper_bound = float(best_solution_match.group(1))
+            if lower_bound is not None or upper_bound is not None:
+                print(f"Parsed bounds from BARON output: lower={lower_bound}, upper={upper_bound}")
+                return lower_bound, upper_bound
+
+        # Handle direct Gurobi (same patterns as GAMS+Gurobi)
+        elif solver.lower() == "gurobi":
+            gap_line_match = re.search(
+                r"[Bb]est objective\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?),\s*"
+                r"best bound\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+                log_content,
+            )
+            if gap_line_match:
+                upper_bound = float(gap_line_match.group(1))
+                lower_bound = float(gap_line_match.group(2))
+                print(f"Parsed bounds from Gurobi output: lower={lower_bound}, upper={upper_bound}")
+                return lower_bound, upper_bound
+
+        # Handle SCIP
+        elif solver.lower() == "scip" or (
+            solver.lower() == "gams" and subsolver and "scip" in subsolver.lower()
+        ):
+            # Look for Dual Bound and Primal Bound in SCIP output
+            dual_bound_match = re.search(
+                r"Dual Bound\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", log_content
+            )
+            primal_bound_match = re.search(
+                r"Primal Bound\s*:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", log_content
+            )
+            if dual_bound_match:
+                lower_bound = float(dual_bound_match.group(1))
+            if primal_bound_match:
+                upper_bound = float(primal_bound_match.group(1))
+            if lower_bound is not None or upper_bound is not None:
+                print(f"Parsed bounds from SCIP output: lower={lower_bound}, upper={upper_bound}")
+                return lower_bound, upper_bound
+
+        return lower_bound, upper_bound
+
+    except Exception as e:
+        print(f"Error parsing solver bounds: {str(e)}")
+        return None, None
+
+
 def calculate_root_relaxation_gap(
     objective_value: Optional[float], root_relaxation_value: Optional[float]
 ) -> Optional[float]:
@@ -631,6 +750,16 @@ def save_results(
             lower_bound = result.lower_bound
         if upper_bound is None and hasattr(result, "upper_bound"):
             upper_bound = result.upper_bound
+
+        # If bounds are still not found, try parsing from output log
+        # This is especially important for GAMS with Gurobi/BARON subsolvers
+        if lower_bound is None or upper_bound is None:
+            output_log_path = os.path.join(results_dir, "output_log.txt")
+            parsed_lower, parsed_upper = parse_solver_bounds(output_log_path, solver, subsolver)
+            if lower_bound is None and parsed_lower is not None:
+                lower_bound = parsed_lower
+            if upper_bound is None and parsed_upper is not None:
+                upper_bound = parsed_upper
 
     except Exception as e:
         print(f"Warning: Could not extract bound from solver result: {str(e)}")
@@ -1042,7 +1171,7 @@ def solve_with_solver(
             model,
             solver=solver_name,
             tee=tee,
-            keepfiles=True,
+            keepfiles=False,  # Commented out: was True to save .gms files
             tmpdir=results_dir,
             symbolic_solver_labels=True,
             add_options=[
@@ -1121,7 +1250,7 @@ def solve_with_solver(
             model,
             tee=tee,
             symbolic_solver_labels=True,
-            keepfiles=True,
+            # keepfiles=True,  # Commented out: was saving model files
         )
     else:
         raise ValueError(f"Unsupported solver: {solver} with subsolver: {subsolver}")
@@ -1349,7 +1478,7 @@ def solve_model(
                 )
 
                 # Save pretty-printed model
-                save_model_pprint(model, results_dir, is_relaxation=False)
+                # save_model_pprint(model, results_dir, is_relaxation=False)
 
         # Solve the relaxation if requested
         if calculate_relaxation_gap or relaxation_only:
@@ -1562,7 +1691,7 @@ def solve_model(
                         print(f"Error updating Excel file: {str(e)}")
 
                 # Save pretty-printed relaxed model
-                save_model_pprint(relaxed_model, results_dir, is_relaxation=True)
+                # save_model_pprint(relaxed_model, results_dir, is_relaxation=True)
 
     return None
 

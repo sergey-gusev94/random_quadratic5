@@ -12,7 +12,7 @@ from generate_plots import (
 )
 
 # Time limit for solver runs (in seconds)
-TIME_LIMIT = 1800
+TIME_LIMIT = 300
 
 
 def find_excel_file(directory: str) -> Optional[str]:
