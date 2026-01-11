@@ -18,6 +18,7 @@ import pyomo.gdp.plugins.hull_exact_conic_no_sqrt_no_extra_var
 import pyomo.gdp.plugins.hull_exact_conic_original
 import pyomo.gdp.plugins.hull_exact_conic_sqrt_extra_var
 import pyomo.gdp.plugins.hull_exact_conic_sqrt_no_extra_var
+import pyomo.gdp.plugins.hull_exact_conic_no_cholesky
 import pyomo.gdp.plugins.hull_reduced_y
 
 possible_modes = ["approximation", "exact", "reduced_power_y", "no_mode"]
@@ -26,6 +27,7 @@ plugins = [
     pyomo.gdp.plugins.hull_exact,
     pyomo.gdp.plugins.hull_reduced_y,
     pyomo.gdp.plugins.hull_exact_conic,
+    pyomo.gdp.plugins.hull_exact_conic_no_cholesky,
 ]
 
 parameters = {
@@ -44,6 +46,7 @@ reformulation_strategies = [
     "gdp.hull_exact_conic_no_sqrt_no_extra_var",
     "gdp.hull_exact_conic_sqrt_extra_var",
     "gdp.hull_exact_conic_sqrt_no_extra_var",
+    "gdp.hull_exact_conic_no_cholesky",
 ]
 
 TOLS = {

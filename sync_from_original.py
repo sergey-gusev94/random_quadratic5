@@ -33,6 +33,33 @@ def main():
     shutil.copytree(source_dir, target_dir)
     print("Done.")
     
+    # Copy batches folder
+    source_batches = script_dir.parent / "random_quadratic" / "data" / "batches"
+    target_data = script_dir / "data"
+    target_batches = target_data / "batches"
+    
+    print(f"\nSource batches: {source_batches}")
+    print(f"Target batches: {target_batches}")
+    
+    # Validate source batches exists
+    if not source_batches.exists():
+        print(f"Warning: Source batches directory not found: {source_batches}")
+        return 0
+    
+    # Create data directory if it doesn't exist
+    target_data.mkdir(parents=True, exist_ok=True)
+    
+    # Delete target batches if it exists
+    if target_batches.exists():
+        print(f"\nDeleting: {target_batches}")
+        shutil.rmtree(target_batches)
+        print("Deleted.")
+    
+    # Copy batches folder
+    print(f"\nCopying batches folder...")
+    shutil.copytree(source_batches, target_batches)
+    print("Done.")
+    
     return 0
 
 

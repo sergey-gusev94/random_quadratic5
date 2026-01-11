@@ -314,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch",
         type=str,
-        default="nonconvex100",
+        default="psd",
         help="Batch name (e.g., 'psd' for psd.txt, 'nonconvex100' \
             for nonconvex100.txt, 'none' to generate new batch). Default: nonconvex100",
     )
@@ -336,7 +336,7 @@ if __name__ == "__main__":
         # {"solver": "gurobi", "subsolver": 'persistent'},
         # {"solver": "gams", "subsolver": "ipopth"},
         {"solver": "gams", "subsolver": "scip"},
-        # {"solver": "gams", "subsolver": "scip_convex"},
+        {"solver": "gams", "subsolver": "scip_convex"},
         # {"solver": "scip", "subsolver": None},
     ]
 
@@ -357,11 +357,11 @@ if __name__ == "__main__":
     # Generate a batch of models if needed
     if batch_path is None or not os.path.exists(batch_path):
         batch_path = generate_batch(
-            n_dimensions_range=[4 * i for i in range(2, 6)],
-            n_disjunctions_range=[4 * i for i in range(2, 5)],
-            n_disjuncts_per_disjunction_range=[4 * i for i in range(3, 6)],
-            n_constraints_per_disjunct_range=[4 * i for i in range(2, 5)],
-            n_feasible_regions_range=[10],
+            n_dimensions_range=[2],
+            n_disjunctions_range=[2],
+            n_disjuncts_per_disjunction_range=[2],
+            n_constraints_per_disjunct_range=[2],
+            n_feasible_regions_range=[2],
             mode=mode,
             constraint_margin=(0.0, 0.1),
             solver="gams",  # For initial model generation only
@@ -375,19 +375,20 @@ if __name__ == "__main__":
             batch_path=batch_path,
             reformulation_strategies=[
                 "gdp.bigm",
-                "gdp.hull",
+                #"gdp.hull",
                 "gdp.hull_exact",
                 # "gdp.hull_reduced_y",
                 # "gdp.binary_multiplication",
                 "gdp.hull_eps_1e-2",
                 "gdp.hull_eps_1e-3",
-                # "gdp.hull_eps_1e-4",
-                # "gdp.hull_exact_conic",
-                #"gdp.hull_exact_conic_original",
+                "gdp.hull_eps_1e-4",
+                #"gdp.hull_exact_conic",
+                "gdp.hull_exact_conic_original",
                 #"gdp.hull_exact_conic_no_sqrt_extra_var",
-                # "gdp.hull_exact_conic_no_sqrt_no_extra_var",
+                #"gdp.hull_exact_conic_no_sqrt_no_extra_var",
                 #"gdp.hull_exact_conic_sqrt_extra_var",
                 #"gdp.hull_exact_conic_sqrt_no_extra_var",
+                #"gdp.hull_exact_conic_no_cholesky",
             ],
             mode=mode,
             time_limit=300,
