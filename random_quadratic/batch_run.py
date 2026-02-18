@@ -314,7 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch",
         type=str,
-        default="none",
+        default="psd",
         help="Batch name (e.g., 'psd' for psd.txt, 'nonconvex100' \
             for nonconvex100.txt, 'none' to generate new batch). Default: nonconvex100",
     )
@@ -389,8 +389,8 @@ if __name__ == "__main__":
                 "gdp.hull_exact_conic_sqrt_extra_var",
                 "gdp.hull_exact_conic_sqrt_no_extra_var",
                 "gdp.hull_exact_conic_no_cholesky",
-                "gdp.hull_exact_extra_var",
-                "gdp.hull_exact_extra_var_inequal",
+                # "gdp.hull_exact_extra_var",
+                # "gdp.hull_exact_extra_var_inequal",
             ],
             mode=mode,
             time_limit=300,
