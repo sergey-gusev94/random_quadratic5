@@ -357,11 +357,11 @@ if __name__ == "__main__":
     # Generate a batch of models if needed
     if batch_path is None or not os.path.exists(batch_path):
         batch_path = generate_batch(
-            n_dimensions_range=[4 * i for i in range(2, 6)],
-            n_disjunctions_range=[4 * i for i in range(2, 5)],
-            n_disjuncts_per_disjunction_range=[4 * i for i in range(3, 6)],
-            n_constraints_per_disjunct_range=[4 * i for i in range(2, 5)],
-            n_feasible_regions_range=[10],
+            n_dimensions_range=[2],
+            n_disjunctions_range=[2],
+            n_disjuncts_per_disjunction_range=[2],
+            n_constraints_per_disjunct_range=[2],
+            n_feasible_regions_range=[2],
             mode=mode,
             constraint_margin=(0.0, 0.1),
             solver="gams",  # For initial model generation only
@@ -388,6 +388,9 @@ if __name__ == "__main__":
                 "gdp.hull_exact_conic_no_sqrt_no_extra_var",
                 "gdp.hull_exact_conic_sqrt_extra_var",
                 "gdp.hull_exact_conic_sqrt_no_extra_var",
+                "gdp.hull_exact_conic_no_cholesky",
+                "gdp.hull_exact_extra_var",
+                "gdp.hull_exact_extra_var_inequal",
             ],
             mode=mode,
             time_limit=300,

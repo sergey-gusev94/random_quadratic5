@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -11,14 +12,33 @@ import pandas as pd
 
 def _get_strategy_display_name(strategy: str) -> str:
     """Gets a display-friendly name for a strategy."""
-    display_name = strategy.replace("gdp.", "")
-    # Longer names must be replaced first to avoid partial replacements
-    display_name = display_name.replace("hull_exact", "Hull Exact")
+    convex_prefix = ""
+    bare = strategy.replace("gdp.", "")
+    if bare.startswith("convex_flag_"):
+        convex_prefix = "Convex Flag "
+        bare = bare[len("convex_flag_"):]
+
+    display_name = bare
+
+    # Handle hull_eps_<value> patterns: hull_eps_1e-3 → Hull(ε=1e-3)
+    eps_match = re.match(r"hull_eps_(.*)", display_name)
+    if eps_match:
+        return convex_prefix + f"Hull(ε={eps_match.group(1)})"
+
+    display_name = display_name.replace("hull_exact_extra_var_inequal", "General Exact Hull Extra Var Ineq.")
+    display_name = display_name.replace("hull_exact_conic_no_sqrt_extra_var", "Conic Exact Hull (No Sqrt, Extra Var)")
+    display_name = display_name.replace("hull_exact_conic_no_sqrt_no_extra_var", "Conic Exact Hull (No Sqrt, No Extra Var)")
+    display_name = display_name.replace("hull_exact_conic_sqrt_extra_var", "Conic Exact Hull (Sqrt, Extra Var)")
+    display_name = display_name.replace("hull_exact_conic_sqrt_no_extra_var", "Conic Exact Hull (Sqrt, No Extra Var)")
+    display_name = display_name.replace("hull_exact_conic_original", "Conic Exact Hull (Only factorized)")
+    display_name = display_name.replace("hull_exact_conic_no_cholesky", "Conic Exact Hull")
+    display_name = display_name.replace("hull_exact_conic", "Conic Exact Hull (Base)")
+    display_name = display_name.replace("hull_exact", "General Exact Hull")
     display_name = display_name.replace("hull_reduced_y", "Hull Reduced Y")
     display_name = display_name.replace("binary_multiplication", "Binary Mult.")
-    display_name = display_name.replace("hull", "Hull(ε-approx.)")
+    display_name = display_name.replace("hull", "Hull(ε=1e-4)")
     display_name = display_name.replace("bigm", "BigM")
-    return display_name
+    return convex_prefix + display_name
 
 
 def _filter_strategies(
@@ -42,14 +62,53 @@ def _get_strategy_style_maps() -> tuple:
         "gdp.hull_exact": "-.",
         "gdp.hull_reduced_y": ":",
         "gdp.binary_multiplication": (0, (5, 1)),
+        "gdp.hull_exact_extra_var_inequal": (0, (10, 5)),
+        "gdp.hull_exact_conic_no_cholesky": (0, (3, 1, 1, 1)),
+        "gdp.hull_exact_conic_original": "-",
+        "gdp.hull_exact_conic": "--",
+        "gdp.hull_exact_conic_no_sqrt_extra_var": "-.",
+        "gdp.hull_exact_conic_no_sqrt_no_extra_var": ":",
+        "gdp.hull_exact_conic_sqrt_extra_var": (0, (5, 1)),
+        "gdp.hull_exact_conic_sqrt_no_extra_var": (0, (10, 5)),
     }
     color_map = {
         "gdp.bigm": "blue",
         "gdp.hull": "brown",
         "gdp.hull_exact": "green",
         "gdp.hull_reduced_y": "purple",
-        "gdp.binary_multiplication": "orange",
+        "gdp.binary_multiplication": "teal",
+        "gdp.hull_exact_extra_var_inequal": "darkgreen",
+        "gdp.hull_exact_conic_no_cholesky": "orange",
+        "gdp.hull_exact_conic_original": "cyan",
+        "gdp.hull_exact_conic": "goldenrod",
+        "gdp.hull_exact_conic_no_sqrt_extra_var": "hotpink",
+        "gdp.hull_exact_conic_no_sqrt_no_extra_var": "darkred",
+        "gdp.hull_exact_conic_sqrt_extra_var": "mediumvioletred",
+        "gdp.hull_exact_conic_sqrt_no_extra_var": "rosybrown",
     }
+
+    # Add convex_flag_ variants: same line styles, distinctly different colors
+    convex_color_map = {
+        "gdp.convex_flag_bigm": "crimson",
+        "gdp.convex_flag_hull": "magenta",
+        "gdp.convex_flag_hull_exact": "darkorange",
+        "gdp.convex_flag_hull_reduced_y": "olive",
+        "gdp.convex_flag_binary_multiplication": "navy",
+        "gdp.convex_flag_hull_exact_extra_var_inequal": "tomato",
+        "gdp.convex_flag_hull_exact_conic_no_cholesky": "deeppink",
+    }
+    for convex_key, base_key in [
+        ("gdp.convex_flag_bigm", "gdp.bigm"),
+        ("gdp.convex_flag_hull", "gdp.hull"),
+        ("gdp.convex_flag_hull_exact", "gdp.hull_exact"),
+        ("gdp.convex_flag_hull_reduced_y", "gdp.hull_reduced_y"),
+        ("gdp.convex_flag_binary_multiplication", "gdp.binary_multiplication"),
+        ("gdp.convex_flag_hull_exact_extra_var_inequal", "gdp.hull_exact_extra_var_inequal"),
+        ("gdp.convex_flag_hull_exact_conic_no_cholesky", "gdp.hull_exact_conic_no_cholesky"),
+    ]:
+        style_map[convex_key] = style_map[base_key]
+    color_map.update(convex_color_map)
+
     return style_map, color_map
 
 
@@ -524,6 +583,140 @@ def create_node_relaxation_comparison(
     print(f"Saved plot to {output_file}")
 
 
+def create_root_relaxation_scatter(
+    df: pd.DataFrame,
+    strategy_x: str,
+    strategy_y: str,
+    output_dir: str,
+    obj_tolerance: float = 1e-4,
+) -> None:
+    """
+    Create a scatter plot comparing root relaxation values between two strategies.
+
+    Each problem instance is a point:
+        x-axis → Root relaxation value for strategy_x
+        y-axis → Root relaxation value for strategy_y
+    A diagonal y=x reference line is drawn for easy comparison.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing the results
+    strategy_x : str
+        Strategy for the x-axis (e.g., "gdp.bigm")
+    strategy_y : str
+        Strategy for the y-axis (e.g., "gdp.hull_exact")
+    output_dir : str
+        Directory to save the plot
+    obj_tolerance : float, optional
+        Tolerance for determining if objective values are different, by default 1e-4
+    """
+    col_name = "Root Relaxation Value"
+
+    print(f"Creating root relaxation scatter plot: {strategy_x} vs {strategy_y}")
+
+    # Check if the required column exists
+    if col_name not in df.columns:
+        print(f"Column '{col_name}' not found in data, skipping root relaxation scatter plot")
+        return
+
+    # Get display names
+    display_x = _get_strategy_display_name(strategy_x)
+    display_y = _get_strategy_display_name(strategy_y)
+
+    # Filter data for the two strategies
+    df_x = df[df["Strategy"] == strategy_x]
+    df_y = df[df["Strategy"] == strategy_y]
+
+    # Merge on Model Name to get matching pairs
+    merged = pd.merge(df_x, df_y, on="Model Name", suffixes=("_x", "_y"))
+
+    # Filter out rows where either root relaxation value is NaN
+    valid_data = merged[
+        pd.notna(merged[f"{col_name}_x"]) & pd.notna(merged[f"{col_name}_y"])
+    ]
+
+    if len(valid_data) == 0:
+        print(f"No valid root relaxation data found for {strategy_x} vs {strategy_y}, skipping")
+        return
+
+    values_x = valid_data[f"{col_name}_x"].astype(float)
+    values_y = valid_data[f"{col_name}_y"].astype(float)
+
+    # Check if objective values are different
+    obj_different = np.zeros(len(valid_data), dtype=bool)
+    if "Objective Value_x" in valid_data.columns and "Objective Value_y" in valid_data.columns:
+        obj_x = valid_data["Objective Value_x"]
+        obj_y = valid_data["Objective Value_y"]
+        obj_different = np.abs(obj_x - obj_y) > obj_tolerance
+
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+
+    # Calculate axis limits
+    all_values = np.concatenate([values_x.values, values_y.values])
+    min_val = float(np.min(all_values))
+    max_val = float(np.max(all_values))
+    range_val = max_val - min_val
+    if range_val == 0:
+        range_val = abs(min_val) * 0.1 if min_val != 0 else 1.0
+
+    min_plot = min_val - range_val * 0.05
+    max_plot = max_val + range_val * 0.05
+
+    # Plot diagonal line y = x
+    plt.plot(
+        [min_plot, max_plot],
+        [min_plot, max_plot],
+        "k--",
+        alpha=0.5,
+        linewidth=4,
+        label="y = x",
+    )
+
+    # Plot data points with different colors based on objective value difference
+    blue_points = ~obj_different
+    red_points = obj_different
+
+    if np.any(blue_points):
+        plt.scatter(
+            values_x[blue_points],
+            values_y[blue_points],
+            alpha=0.7,
+            s=100,
+            color="blue",
+            label="Same objective",
+        )
+
+    if np.any(red_points):
+        plt.scatter(
+            values_x[red_points],
+            values_y[red_points],
+            alpha=0.7,
+            s=100,
+            color="red",
+            label="Different objective",
+        )
+
+    # Labels and formatting
+    plt.xlabel(f"{display_x} Root Relaxation", fontsize=28)
+    plt.ylabel(f"{display_y} Root Relaxation", fontsize=28)
+    plt.legend(loc="lower right", fontsize=22, framealpha=0.4)
+    plt.grid(True, alpha=0.3)
+    plt.xlim(min_plot, max_plot)
+    plt.ylim(min_plot, max_plot)
+    plt.tick_params(axis="both", which="major", labelsize=24)
+    plt.tight_layout()
+
+    # Save the figure
+    output_file = os.path.join(
+        output_dir, f"root_relaxation_scatter_{strategy_x}_vs_{strategy_y}.jpg"
+    )
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved root relaxation scatter plot to {output_file}")
+
+
 def create_dolan_more_performance_profile(
     df: pd.DataFrame,
     output_dir: str,
@@ -764,71 +957,6 @@ def create_performance_profile(
                 Skipping profile generation."
         )
         return
-
-    # Create individual performance profiles
-    for strategy in strategies:
-        print(f"  Creating profile for {strategy}")
-        strategy_data = df[df["Strategy"] == strategy]
-
-        # Filter to include correct solutions and timeouts, exclude only wrong solutions
-        if "Status" in strategy_data.columns and "Objective Value" in strategy_data.columns:
-            # Get ground truth for this strategy's models
-            ground_truth = df.groupby("Model Name")["Objective Value"].min()
-            gt = strategy_data["Model Name"].map(ground_truth)
-
-            # Include: (1) correct optimal solutions OR (2) timeout instances
-            # Exclude: wrong solutions (finished but wrong answer)
-            correct_or_timeout = strategy_data[
-                # Correct optimal solutions
-                (
-                    (strategy_data["Status"] == "optimal")
-                    & (strategy_data["Duration (sec)"] < time_limit)
-                    & (np.abs(strategy_data["Objective Value"] - gt) <= obj_tolerance)
-                )
-                |
-                # Timeout instances
-                (strategy_data["Duration (sec)"] >= time_limit)
-            ]
-            solution_times = sorted(correct_or_timeout["Duration (sec)"])
-        else:
-            # Fallback: include all instances
-            solution_times = sorted(strategy_data["Duration (sec)"])
-
-        # Create x and y arrays for plotting
-        x = np.sort(solution_times)
-        y = np.arange(1, len(x) + 1)
-
-        # Create the plot
-        plt.figure(figsize=(10, 6))
-        plt.step(x, y, where="post", linewidth=4)
-
-        # Add time limit line (3600 seconds = 1 hour)
-        plt.axvline(
-            x=time_limit, color="r", linestyle="--", alpha=0.7, label=f"Time limit {time_limit}s"
-        )
-
-        plt.xlabel("Solution Time (s)", fontsize=32)
-        plt.ylabel("Number of Instances Solved", fontsize=32)
-        # plt.title(f"Performance Profile: {strategy}", fontsize=34)
-
-        # Add grid
-        plt.grid(True, alpha=0.3)
-
-        # Set x-axis to log scale
-        plt.xscale("log")
-
-        # Add legend in bottom right corner
-        plt.legend(loc="lower right", fontsize=24, framealpha=0.4)
-
-        # Adjust layout to prevent label cutoff
-        plt.tight_layout()
-
-        # Save the figure
-        strategy_suffix = f"_{output_suffix}" if output_suffix else ""
-        output_file = os.path.join(output_dir, f"profile_{strategy}{strategy_suffix}.jpg")
-        plt.savefig(output_file, dpi=300, bbox_inches="tight")
-        plt.close()
-        print(f"  Saved to {output_file}")
 
     # Create combined performance profile
     plt.figure(figsize=(12, 8))
@@ -1174,25 +1302,51 @@ def create_performance_profile(
         f.write("- Solver_Error: Solver failed with error or other non-optimal status\n")
         f.write("- Missing: Instances not present in data for this strategy\n\n")
 
+        # Calculate dynamic column width based on longest strategy name
+        strategy_col_width = max(
+            len("Strategy"),
+            len("TOTAL"),
+            max((len(data["Strategy"]) for data in results_data), default=0),
+        ) + 1  # Add 1 for spacing
+
+        # Define fixed column widths for numeric columns
+        col_widths = {
+            "Optimal": 10,
+            "Timeout": 10,
+            "Infeasible": 12,
+            "Wrong_Opt": 11,
+            "Solver_Err": 12,
+            "Missing": 10,
+            "Total": 10,
+        }
+        total_width = strategy_col_width + sum(col_widths.values())
+
         # Write table header
         f.write(
-            f"{'Strategy':<20} {'Optimal':<10} {'Timeout':<10} {'Infeasible':<12} "
-            f"{'Wrong_Opt':<11} {'Solver_Err':<12} {'Missing':<10} {'Total':<10}\n"
+            f"{'Strategy':<{strategy_col_width}} {'Optimal':<{col_widths['Optimal']}} "
+            f"{'Timeout':<{col_widths['Timeout']}} {'Infeasible':<{col_widths['Infeasible']}} "
+            f"{'Wrong_Opt':<{col_widths['Wrong_Opt']}} {'Solver_Err':<{col_widths['Solver_Err']}} "
+            f"{'Missing':<{col_widths['Missing']}} {'Total':<{col_widths['Total']}}\n"
         )
-        f.write("-" * 105 + "\n")
+        f.write("-" * total_width + "\n")
 
         # Write data rows
         for data in results_data:
             f.write(
-                f"{data['Strategy']:<20} {data['Optimal']:<10} {data['Timeout']:<10} "
-                f"{data['Infeasible']:<12} {data['Wrong_Optimal']:<11} "
-                f"{data['Solver_Error']:<12} {data['Missing']:<10} {data['Total']:<10}\n"
+                f"{data['Strategy']:<{strategy_col_width}} "
+                f"{data['Optimal']:<{col_widths['Optimal']}} "
+                f"{data['Timeout']:<{col_widths['Timeout']}} "
+                f"{data['Infeasible']:<{col_widths['Infeasible']}} "
+                f"{data['Wrong_Optimal']:<{col_widths['Wrong_Opt']}} "
+                f"{data['Solver_Error']:<{col_widths['Solver_Err']}} "
+                f"{data['Missing']:<{col_widths['Missing']}} "
+                f"{data['Total']:<{col_widths['Total']}}\n"
             )
 
         # Write summary statistics
-        f.write("\n" + "=" * 105 + "\n")
+        f.write("\n" + "=" * total_width + "\n")
         f.write("Summary Statistics:\n")
-        f.write("-" * 105 + "\n")
+        f.write("-" * total_width + "\n")
 
         total_optimal = sum(data["Optimal"] for data in results_data)
         total_timeout = sum(data["Timeout"] for data in results_data)
@@ -1203,9 +1357,14 @@ def create_performance_profile(
         grand_total = sum(data["Total"] for data in results_data)
 
         f.write(
-            f"{'TOTAL':<20} {total_optimal:<10} {total_timeout:<10} "
-            f"{total_infeasible:<12} {total_wrong_optimal:<11} "
-            f"{total_solver_error:<12} {total_missing:<10} {grand_total:<10}\n"
+            f"{'TOTAL':<{strategy_col_width}} "
+            f"{total_optimal:<{col_widths['Optimal']}} "
+            f"{total_timeout:<{col_widths['Timeout']}} "
+            f"{total_infeasible:<{col_widths['Infeasible']}} "
+            f"{total_wrong_optimal:<{col_widths['Wrong_Opt']}} "
+            f"{total_solver_error:<{col_widths['Solver_Err']}} "
+            f"{total_missing:<{col_widths['Missing']}} "
+            f"{grand_total:<{col_widths['Total']}}\n"
         )
 
     print(f"Saved solution outcomes summary to {txt_output}")
@@ -1399,7 +1558,7 @@ def create_performance_profile(
                 y_offset = 0
             # Plot gap phase, offset y to start at last runtime fraction
             if len(gap_data) > 1:
-                ax_gap.step(
+                (gap_line,) = ax_gap.step(
                     gap_data,
                     y_offset + frac_gap,
                     where="post",
@@ -1407,6 +1566,9 @@ def create_performance_profile(
                     linestyle=style,
                     color=color,
                 )
+                if len(solved_times) == 0:
+                    strategy_lines.append(gap_line)
+                    strategy_labels.append(display_name)
         # Axis settings
         ax_runtime.set_xscale("log")
         ax_runtime.set_xlim(min_time, time_limit)
@@ -1526,7 +1688,7 @@ def create_performance_profile(
                 y_offset = 0
             # Plot gap phase, offset y to start at last runtime count
             if len(gap_data) > 1:
-                ax_gap.step(
+                (gap_line,) = ax_gap.step(
                     gap_data,
                     y_offset + n_gap,
                     where="post",
@@ -1534,6 +1696,9 @@ def create_performance_profile(
                     linestyle=style,
                     color=color,
                 )
+                if len(solved_times) == 0:
+                    strategy_lines.append(gap_line)
+                    strategy_labels.append(display_name)
         # Axis settings
         ax_runtime.set_xscale("log")
         ax_runtime.set_xlim(min_time, time_limit)
